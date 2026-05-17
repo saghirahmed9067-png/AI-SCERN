@@ -3,16 +3,11 @@
 /**
  * components/hero/HeroHeadline.tsx
  *
- * Renders the hero headline:
- *   "Detect"          ← static, large, gradient
- *   "[Text] with AI"  ← animated rotating word + static suffix
+ * Fix: prior version used `absolute inset-0` inside a zero-width container,
+ * clipped by overflow-hidden → word invisible on mobile.
  *
- * Animation behaviour:
- *  - Default:  AnimatePresence fade+slide (60fps via transform/opacity)
- *  - prefers-reduced-motion: instant swap, no motion
- *  - Pauses on hover (accessibility + usability)
- *  - Dot indicators double as manual controls
- *  - aria-live="polite" announces word changes to screen readers
+ * Fix: slot now has EXPLICIT w + h at every breakpoint so it never collapses.
+ * `absolute inset-0` inside a sized parent works correctly.
  */
 
 import { useState, useEffect, useCallback } from 'react'
@@ -20,71 +15,49 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 
 const ROTATING_WORDS = ['Text', 'Image', 'Audio', 'Video'] as const
-const WORD_COLORS = ['text-amber', 'text-primary', 'text-cyan', 'text-secondary'] as const
-const ROTATION_INTERVAL_MS = 2500
 
-interface HeroHeadlineProps {
-  /** Override the initial word index (0-3) */
-  initialIndex?: number
-}
+// Full static class strings — Tailwind must see these to include in bundle
+const WORD_STYLES = {
+  Text:  { text: 'text-amber',     bg: 'bg-amber'     },
+  Image: { text: 'text-primary',   bg: 'bg-primary'   },
+  Audio: { text: 'text-cyan',      bg: 'bg-cyan'      },
+  Video: { text: 'text-secondary', bg: 'bg-secondary' },
+} as const
 
-export function HeroHeadline({ initialIndex = 0 }: HeroHeadlineProps) {
-  const [currentIndex, setCurrentIndex] = useState(initialIndex)
-  const [isPaused,     setIsPaused]     = useState(false)
-  const reducedMotion = useReducedMotion()
+const INTERVAL = 2500
 
-  const advance = useCallback(() => {
-    setCurrentIndex(prev => (prev + 1) % ROTATING_WORDS.length)
-  }, [])
+export function HeroHeadline({ initialIndex = 0 }: { initialIndex?: number }) {
+  const [idx,      setIdx]      = useState(initialIndex)
+  const [isPaused, setIsPaused] = useState(false)
+  const reduced = useReducedMotion()
+
+  const next = useCallback(() => setIdx(p => (p + 1) % ROTATING_WORDS.length), [])
 
   useEffect(() => {
     if (isPaused) return
-    const id = setInterval(advance, ROTATION_INTERVAL_MS)
+    const id = setInterval(next, INTERVAL)
     return () => clearInterval(id)
-  }, [isPaused, advance])
+  }, [isPaused, next])
 
-  const word  = ROTATING_WORDS[currentIndex]
-  const color = WORD_COLORS[currentIndex]
-
-  /* ── Framer variants (disabled when reducedMotion) ── */
-  const variants = {
-    enter:  { opacity: 0, y: reducedMotion ? 0 : 18  },
-    center: { opacity: 1, y: 0 },
-    exit:   { opacity: 0, y: reducedMotion ? 0 : -18 },
-  }
-  const transition = {
-    duration: reducedMotion ? 0 : 0.35,
-    ease:     [0.25, 0.1, 0.25, 1] as [number, number, number, number],
-  }
+  const word      = ROTATING_WORDS[idx]
+  const wordStyle = WORD_STYLES[word]
+  const dur       = reduced ? 0 : 0.3
+  const ease      = [0.25, 0.1, 0.25, 1] as const
 
   return (
     <div className="text-center select-none">
 
-      {/* ── Static "Detect" ─────────────────────────────────────────── */}
+      {/* Static "Detect" */}
       <motion.h1
-        className="font-black leading-[0.92] tracking-tight"
-        initial={{ opacity: 0, y: reducedMotion ? 0 : 20 }}
+        className="font-black leading-[0.9] tracking-tight"
+        initial={{ opacity: 0, y: reduced ? 0 : 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: reducedMotion ? 0 : 0.55, ease: 'easeOut' }}
+        transition={{ duration: reduced ? 0 : 0.5, ease: 'easeOut' }}
       >
-        {/* Mobile: compact */}
         <span
-          className="block sm:hidden text-[2.6rem] xs:text-[3rem]"
+          className="block text-[2.5rem] xs:text-5xl sm:text-6xl md:text-7xl lg:text-8xl"
           style={{
-            background: 'linear-gradient(135deg, #ffffff 0%, #d8b4fe 50%, #8B5CF6 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-          }}
-        >
-          Detect
-        </span>
-
-        {/* Desktop: large */}
-        <span
-          className="hidden sm:block text-6xl md:text-7xl lg:text-8xl xl:text-[6rem]"
-          style={{
-            background: 'linear-gradient(135deg, #ffffff 0%, #d8b4fe 40%, #8B5CF6 100%)',
+            background: 'linear-gradient(135deg,#ffffff 0%,#d8b4fe 45%,#8B5CF6 100%)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
@@ -94,76 +67,83 @@ export function HeroHeadline({ initialIndex = 0 }: HeroHeadlineProps) {
         </span>
       </motion.h1>
 
-      {/* ── Rotating word row ─────────────────────────────────────────── */}
+      {/* Rotating word row */}
       <motion.div
-        className="mt-3 sm:mt-4 flex items-center justify-center gap-2 sm:gap-3"
-        initial={{ opacity: 0, y: reducedMotion ? 0 : 14 }}
+        className="mt-3 sm:mt-4 flex items-center justify-center gap-x-2 sm:gap-x-3"
+        initial={{ opacity: 0, y: reduced ? 0 : 14 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: reducedMotion ? 0 : 0.55, delay: 0.15, ease: 'easeOut' }}
+        transition={{ duration: reduced ? 0 : 0.5, delay: 0.15, ease: 'easeOut' }}
         onMouseEnter={() => setIsPaused(true)}
         onMouseLeave={() => setIsPaused(false)}
-        onFocus={()    => setIsPaused(true)}
-        onBlur={()     => setIsPaused(false)}
       >
-        {/* Fixed-height container prevents layout shift */}
+        {/*
+          KEY FIX: explicit w + h at every breakpoint.
+          Without explicit dimensions the parent collapses to 0×0 when all
+          children are absolute — overflow-hidden then clips everything.
+          Widths sized for "Image"/"Audio"/"Video" (longest words) at each size.
+        */}
         <div
-          className="relative h-9 sm:h-11 md:h-14 overflow-hidden flex items-center"
+          className="relative overflow-hidden
+                     w-16  h-8
+                     xs:w-20 xs:h-9
+                     sm:w-28 sm:h-11
+                     md:w-36 md:h-14
+                     lg:w-44 lg:h-16"
           aria-live="polite"
           aria-atomic="true"
-          aria-label={`Currently showing: ${word}`}
         >
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
-              key={currentIndex}
-              variants={variants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={transition}
+              key={idx}
+              initial={{ opacity: 0, y: reduced ?  0 :  22 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{   opacity: 0, y: reduced ?  0 : -22 }}
+              transition={{ duration: dur, ease }}
               className={`
                 absolute inset-0 flex items-center justify-center
-                text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black
-                ${color}
+                font-black leading-none
+                text-2xl xs:text-3xl sm:text-4xl md:text-5xl lg:text-6xl
+                ${wordStyle.text}
               `}
-              style={{ willChange: reducedMotion ? 'auto' : 'transform, opacity' }}
             >
               {word}
             </motion.span>
           </AnimatePresence>
         </div>
 
-        <span className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-semibold text-text-secondary whitespace-nowrap">
+        <span className="text-lg xs:text-xl sm:text-2xl md:text-3xl lg:text-4xl font-semibold text-text-secondary whitespace-nowrap">
           with AI
         </span>
       </motion.div>
 
-      {/* ── Dot indicators / manual controls ──────────────────────────── */}
+      {/* Dot indicators */}
       <motion.div
         className="mt-4 sm:mt-5 flex items-center justify-center gap-2"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: reducedMotion ? 0 : 0.4, delay: 0.35 }}
+        transition={{ duration: reduced ? 0 : 0.4, delay: 0.3 }}
         role="tablist"
-        aria-label="Select content type"
+        aria-label="Select detection type"
       >
-        {ROTATING_WORDS.map((w, i) => (
-          <button
-            key={w}
-            role="tab"
-            aria-selected={i === currentIndex}
-            aria-label={`Detect ${w}`}
-            onClick={() => { setCurrentIndex(i); setIsPaused(true) }}
-            onBlur={() => setIsPaused(false)}
-            className={`
-              rounded-full transition-all duration-300
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background
-              ${i === currentIndex
-                ? `w-5 sm:w-6 h-2 sm:h-2.5 ${WORD_COLORS[i].replace('text-', 'bg-')}`
-                : 'w-2 sm:w-2.5 h-2 sm:h-2.5 bg-text-muted/30 hover:bg-text-muted/60'
-              }
-            `}
-          />
-        ))}
+        {ROTATING_WORDS.map((w, i) => {
+          const active = i === idx
+          return (
+            <button
+              key={w}
+              role="tab"
+              aria-selected={active}
+              aria-label={`Show ${w}`}
+              onClick={() => { setIdx(i); setIsPaused(true) }}
+              className={[
+                'rounded-full transition-all duration-300',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                active
+                  ? `w-5 sm:w-6 h-2 sm:h-2.5 ${WORD_STYLES[w].bg}`
+                  : 'w-2 sm:w-2.5 h-2 sm:h-2.5 bg-white/20 hover:bg-white/40',
+              ].join(' ')}
+            />
+          )
+        })}
       </motion.div>
 
     </div>
