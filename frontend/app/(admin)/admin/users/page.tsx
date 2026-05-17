@@ -356,6 +356,8 @@ export default function UsersAdmin() {
               </table>
               </div>{/* end overflow-x-auto */}
             </div>
+
+            {totalPages > 1 && (
               <div className="flex items-center justify-between mt-4">
                 <p className="text-xs text-text-muted">
                   Showing {((page - 1) * 25) + 1}–{Math.min(page * 25, total)} of {total}
