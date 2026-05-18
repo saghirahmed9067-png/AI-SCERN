@@ -1,0 +1,71 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "installCommand": "npm install --legacy-peer-deps",
+  "regions": [
+    "iad1"
+  ],
+  "env": {
+    "NEXT_TELEMETRY_DISABLED": "1"
+  },
+  "functions": {
+    "app/api/auth/route.ts": {
+      "maxDuration": 10
+    },
+    "app/api/stats/route.ts": {
+      "maxDuration": 15
+    },
+    "app/api/users/route.ts": {
+      "maxDuration": 15
+    },
+    "app/api/analytics/route.ts": {
+      "maxDuration": 15
+    },
+    "app/api/activity-logs/route.ts": {
+      "maxDuration": 15
+    },
+    "app/api/audit-log/route.ts": {
+      "maxDuration": 15
+    },
+    "app/api/security/route.ts": {
+      "maxDuration": 15
+    },
+    "app/api/settings/route.ts": {
+      "maxDuration": 15
+    },
+    "app/api/errors/route.ts": {
+      "maxDuration": 15
+    },
+    "app/api/feature-flags/route.ts": {
+      "maxDuration": 10
+    },
+    "app/api/health/route.ts": {
+      "maxDuration": 5
+    },
+    "app/api/pipeline/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/hf-push/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/blocked-domains/route.ts": {
+      "maxDuration": 10
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
+        }
+      ]
+    }
+  ]
+}
