@@ -30,6 +30,7 @@ import {
 } from './gemini-analyzer'
 import { analyzeTextWithBrain }  from '@/lib/inference/text-detection-brain'
 import { analyzeImageWithBrain } from '@/lib/inference/image-detection-brain'
+import { scoreToVerdict }        from '@/lib/accuracy/log-predictions'
 
 export interface DetectionSignal {
   name:        string
@@ -51,6 +52,8 @@ export interface DetectionResult {
   sentence_scores?: { text: string; ai_score: number; perplexity: number }[]
   segment_scores?:  { start_sec: number; end_sec: number; label: string; ai_score: number }[]
   frame_scores?:    { frame: number; time_sec: number; ai_score: number; face_detected?: boolean }[]
+  /** Per-model breakdown for accuracy monitoring — logged fire-and-forget after scan insert */
+  model_breakdown?: import('@/lib/accuracy/log-predictions').ModelPrediction[]
 }
 
 const HF_TOKEN = process.env.HUGGINGFACE_API_TOKEN || process.env.HF_TOKEN
@@ -344,11 +347,40 @@ export async function analyzeText(text: string): Promise<DetectionResult> {
   const charCount = truncated.length
   const truncNote = text.length > MAX_TEXT_CHARS ? ` (truncated to ${MAX_TEXT_CHARS.toLocaleString()} chars for analysis)` : ''
 
+  // ── Accuracy monitoring: per-model breakdown ─────────────────────────────
+  const model_breakdown: import('@/lib/accuracy/log-predictions').ModelPrediction[] = [
+    {
+      model_id:   'text-brain-v1',
+      raw_score:  brainResult.score,
+      verdict:    scoreToVerdict(brainResult.score),
+      latency_ms: 0,   // brain is sync — latency not meaningful
+    },
+    ...mlScores.map(m => ({
+      model_id:   m.model,
+      raw_score:  m.aiScore,
+      verdict:    scoreToVerdict(m.aiScore),
+      latency_ms: 0,
+    })),
+    ...(geminiScore !== null ? [{
+      model_id:   'gemini-2.0-flash',
+      raw_score:  geminiScore,
+      verdict:    scoreToVerdict(geminiScore),
+      latency_ms: 0,
+    }] : []),
+    {
+      model_id:   'linguistic-signals-v2',
+      raw_score:  lingScore,
+      verdict:    scoreToVerdict(lingScore),
+      latency_ms: 0,
+    },
+  ]
+
   return {
     verdict,
     confidence:    Math.round(adjustedScore * 1000) / 1000,
     model_used:    `Aiscern-TextEngine-v6(${modelStr})`,
     model_version: '6.0.0',
+    model_breakdown,
     signals: [
       {
         name:        'Graph RAG Detection Brain',
@@ -697,6 +729,15 @@ Respond ONLY with JSON: {"ai_probability": 0.0-1.0, "reasoning": "specific evide
         flagged:     sig.score > 0.58,
       })),
     ],
+    model_breakdown: [
+      { model_id: 'image-brain-v2', raw_score: brainResult.score, verdict: scoreToVerdict(brainResult.score), latency_ms: 0 },
+      ...(geminiScore !== null ? [{ model_id: 'gemini-2.0-flash-vision', raw_score: geminiScore, verdict: scoreToVerdict(geminiScore), latency_ms: 0 }] : []),
+      ...(grokScore   !== null ? [{ model_id: 'grok-2-vision',           raw_score: grokScore,   verdict: scoreToVerdict(grokScore),   latency_ms: 0 }] : []),
+      ...(nimScore    !== null ? [{ model_id: 'nvidia-llama-3.2-90b',    raw_score: nimScore,    verdict: scoreToVerdict(nimScore),    latency_ms: 0 }] : []),
+      ...(orScore     !== null ? [{ model_id: 'openrouter-qwen2.5-vl',   raw_score: orScore,     verdict: scoreToVerdict(orScore),     latency_ms: 0 }] : []),
+      ...mlScores.map(m => ({ model_id: m.model, raw_score: m.aiScore, verdict: scoreToVerdict(m.aiScore), latency_ms: 0 })),
+      { model_id: 'pixel-signals-v2', raw_score: imgSignalScore, verdict: scoreToVerdict(imgSignalScore), latency_ms: 0 },
+    ],
     summary: verdict === 'AI'
       ? `AI-generated image detected with ${Math.round(calibratedImgScore * 100)}% confidence. ` +
         (brainResult.generatorHints.length ? `Likely generator: ${brainResult.generatorHints[0]}. ` : '') +
@@ -829,6 +870,16 @@ export async function analyzeAudio(
       ? `Voice detected as authentic human speech — ${Math.round((1 - aiScore) * 100)}% confidence.`
       : `Audio inconclusive (${Math.round(aiScore * 100)}% synthetic probability). WAV format gives best accuracy.`,
     segment_scores,
+    model_breakdown: [
+      ...(geminiScore !== null ? [{ model_id: 'gemini-2.0-flash-audio', raw_score: geminiScore, verdict: scoreToVerdict(geminiScore), latency_ms: 0 }] : []),
+      ...mlScores.map((m, i) => ({
+        model_id:   i === 0 ? MODELS.audio_finetuned : i === 1 ? MODELS.audio_primary : MODELS.audio_asvspoof,
+        raw_score:  m.score,
+        verdict:    scoreToVerdict(m.score),
+        latency_ms: 0,
+      })),
+      { model_id: 'acoustic-signals-v2', raw_score: sigScore, verdict: scoreToVerdict(sigScore), latency_ms: 0 },
+    ],
   }
 }
 

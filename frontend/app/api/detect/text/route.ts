@@ -6,6 +6,7 @@ import { creditGuard, httpErrorResponse, HTTPError } from '@/lib/middleware/cred
 import { fireScanCompleted }                           from '@/lib/inngest/send-scan-event'
 import { sanitizeText } from '@/lib/utils/sanitize'
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
+import { logModelPredictions } from '@/lib/accuracy/log-predictions'
 
 export const dynamic = 'force-dynamic'
 
@@ -105,6 +106,11 @@ export async function POST(req: NextRequest) {
 
     // Fire Inngest background job (fire-and-forget, non-blocking)
     if (scanId) fireScanCompleted({ scan_id: scanId, user_id: userId, media_type: 'text', verdict: result.verdict, confidence: result.confidence, model_used: result.model_used })
+
+    // Accuracy monitoring — fire-and-forget, never blocks response
+    if (scanId && result.model_breakdown?.length) {
+      void logModelPredictions(scanId, 'text', result.model_breakdown, result.verdict)
+    }
 
     return NextResponse.json({
       success: true,

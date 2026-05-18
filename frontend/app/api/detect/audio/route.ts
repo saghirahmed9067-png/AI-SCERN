@@ -7,6 +7,7 @@ import { fireScanCompleted }             from '@/lib/inngest/send-scan-event'
 import { getSupabaseAdmin }          from '@/lib/supabase/admin'
 import { getR2Buffer, r2Available }  from '@/lib/storage/r2'
 import { analyzeAudio as runForensicPipeline } from '@/lib/forensic/audio/pipeline'
+import { logModelPredictions }       from '@/lib/accuracy/log-predictions'
 
 export const dynamic = 'force-dynamic'
 
@@ -181,6 +182,11 @@ export async function POST(req: NextRequest) {
 
     // Fire Inngest background job (fire-and-forget, non-blocking)
     if (scanId) fireScanCompleted({ scan_id: scanId, user_id: userId, media_type: 'audio', verdict: result.verdict, confidence: result.confidence, model_used: result.model_used })
+
+    // Accuracy monitoring — fire-and-forget
+    if (scanId && result.model_breakdown?.length) {
+      void logModelPredictions(scanId, 'audio', result.model_breakdown, result.verdict)
+    }
 
     return NextResponse.json({
       success: true, scan_id: scanId,
