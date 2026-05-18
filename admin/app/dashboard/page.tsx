@@ -294,7 +294,7 @@ function UsersTab() {
     setLoad(false)
   }, [page, search, filter])
 
-  useEffect(load, [load])
+  useEffect(() => { load() }, [load])
 
   const doAction = async () => {
     if (!modal) return
