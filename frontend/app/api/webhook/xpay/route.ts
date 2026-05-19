@@ -80,7 +80,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const tier  = planId.includes('enterprise') ? 'enterprise' : planId.includes('pro') ? 'pro' : 'starter'
     await admin
       .from('profiles')
-      .update({ plan: tier, plan_period: plan.period, plan_updated_at: new Date().toISOString() })
+      .update({
+        plan:            tier,
+        plan_period:     plan.period,
+        plan_updated_at: new Date().toISOString(),
+      })
       .eq('id', userId)
   } catch (err) {
     console.error('[webhook:xpay] Plan update failed (non-fatal):', err)

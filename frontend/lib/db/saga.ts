@@ -130,22 +130,33 @@ export async function runSaga<T = unknown>(
 
 async function appendOutboxEvent(event: SagaEvent): Promise<void> {
   try {
-    const sql = analyticsDb()
+    // Primary: write to CockroachDB analytics if configured
+    if (process.env.COCKROACH_URL) {
+      const sql = analyticsDb()
+      await sql`
+        INSERT INTO saga_outbox (saga_id, saga_name, step_name, status, payload, error, created_at)
+        VALUES (
+          ${event.saga_id}, ${event.saga_name}, ${event.step_name}, ${event.status},
+          ${event.payload ? JSON.stringify(event.payload) : null},
+          ${event.error ?? null}, ${event.created_at}
+        )
+        ON CONFLICT DO NOTHING
+      `
+      return
+    }
+    // Fallback: write to Supabase saga_outbox (always available)
+    const sql = authDb()
     await sql`
       INSERT INTO saga_outbox (saga_id, saga_name, step_name, status, payload, error, created_at)
       VALUES (
-        ${event.saga_id},
-        ${event.saga_name},
-        ${event.step_name},
-        ${event.status},
-        ${event.payload ? JSON.stringify(event.payload) : null},
-        ${event.error ?? null},
-        ${event.created_at}
+        ${event.saga_id}, ${event.saga_name}, ${event.step_name}, ${event.status},
+        ${event.payload ? JSON.stringify(event.payload) : null}::jsonb,
+        ${event.error ?? null}, ${event.created_at}
       )
       ON CONFLICT DO NOTHING
     `
   } catch {
-    // Analytics DB down — degrade gracefully, log to console only
+    // Analytics fully down — degrade gracefully
     console.warn('[Saga:outbox] Failed to persist event:', event.step_name, event.status)
   }
 }
@@ -162,27 +173,31 @@ export function deductCreditStep(userId: string, scanType: string): SagaStep<boo
     name: 'deduct-credit',
     async execute() {
       const sql = authDb()
-      // check_and_increment_scan is an atomic DB function already in Supabase
+      // Use the existing check_and_increment_scan RPC — it's atomic and handles
+      // daily limits, modality access, and credits_remaining deduction in one query
       const rows = await sql<[{ allowed: boolean; reason: string }]>`
         SELECT * FROM check_and_increment_scan(${userId}, ${scanType})
       `
-      const result = rows[0]
+      const result = rows[0] as unknown as { allowed: boolean; reason: string }
       if (!result?.allowed) {
-        throw new Error(`Credit check failed: ${result?.reason ?? 'unknown'}`)
+        throw new Error(`Scan not allowed: ${result?.reason ?? 'unknown'}`)
       }
       deducted = true
       return true
     },
     async compensate() {
       if (!deducted) return
-      // Decrement the counter back — refund the scan
+      // Refund: decrement daily_scans and restore credits_remaining if it was a credit scan
       const sql = authDb()
       await sql`
-        UPDATE user_scan_counts
-        SET    daily_count = GREATEST(0, daily_count - 1),
-               updated_at  = NOW()
-        WHERE  user_id   = ${userId}
-          AND  scan_date = CURRENT_DATE
+        UPDATE profiles
+        SET    daily_scans       = GREATEST(0, daily_scans - 1),
+               scan_count        = GREATEST(0, COALESCE(scan_count, 0) - 1),
+               credits_remaining = CASE
+                 WHEN credits_remaining IS NOT NULL THEN credits_remaining + 1
+                 ELSE credits_remaining
+               END
+        WHERE  id = ${userId}
       `.catch(() => { /* best-effort refund */ })
     },
   }
@@ -236,11 +251,21 @@ export function logActivityStep(
   return {
     name: 'log-activity',
     async execute() {
-      const sql = analyticsDb()
-      await sql`
-        INSERT INTO user_activity (user_id, event_type, metadata, created_at)
-        VALUES (${userId}, ${'scan:' + scanType}, ${JSON.stringify(metadata ?? {})}, NOW())
-      `.catch(() => { /* non-fatal analytics */ })
+      // Try CockroachDB analytics first; fall back to Supabase; fail silently either way
+      try {
+        if (process.env.COCKROACH_URL) {
+          const sql = analyticsDb()
+          await sql`
+            INSERT INTO user_activity (user_id, event_type, metadata, created_at)
+            VALUES (${userId}, ${'scan:' + scanType}, ${JSON.stringify(metadata ?? {})}, NOW())
+          `
+          return
+        }
+        // Fallback: write to Supabase scan_count update (already done by check_and_increment_scan)
+        // No duplicate needed — just a no-op if analytics not configured
+      } catch {
+        /* non-fatal analytics write — never block a scan */
+      }
     },
     // Analytics is append-only — no compensation
   }
@@ -262,12 +287,14 @@ export function recordCreditPurchaseStep(
     name: 'record-credit-purchase',
     async execute() {
       const sql = authDb()
+      // Real schema: credit_transactions(id, user_id, delta, reason, balance_after,
+      //              order_id, transaction_type, amount_pkr, plan_id, status, created_at)
       const rows = await sql<[{ id: string }]>`
         INSERT INTO credit_transactions
-          (user_id, order_id, credits, amount_pkr, plan_id, status, created_at)
+          (user_id, delta, reason, order_id, transaction_type, amount_pkr, plan_id, status, created_at)
         VALUES
-          (${userId}, ${orderId}, ${credits}, ${amountPkr}, ${planId}, 'completed', NOW())
-        ON CONFLICT (order_id) DO UPDATE SET status = 'completed'
+          (${userId}, ${credits}, 'xpay_purchase', ${orderId}, 'purchase', ${amountPkr}, ${planId}, 'completed', NOW())
+        ON CONFLICT (order_id) DO UPDATE SET status = 'completed', updated_at = NOW()
         RETURNING id
       `
       txnId = rows[0].id
@@ -297,14 +324,15 @@ export function topUpCreditsStep(
     name: 'topup-credits',
     async execute() {
       const sql = authDb()
-      const rows = await sql<[{ credits_balance: number }]>`
+      // Real column name in profiles is credits_remaining (not credits_balance)
+      const rows = await sql<[{ credits_remaining: number }]>`
         UPDATE profiles
-        SET    credits_balance = credits_balance + ${credits},
-               updated_at      = NOW()
+        SET    credits_remaining = COALESCE(credits_remaining, 0) + ${credits},
+               updated_at        = NOW()
         WHERE  id = ${userId}
-        RETURNING credits_balance
+        RETURNING credits_remaining
       `
-      newBalance = rows[0]?.credits_balance ?? 0
+      newBalance = rows[0]?.credits_remaining ?? 0
       return newBalance
     },
     async compensate() {
@@ -312,8 +340,8 @@ export function topUpCreditsStep(
       const sql = authDb()
       await sql`
         UPDATE profiles
-        SET    credits_balance = GREATEST(0, credits_balance - ${credits}),
-               updated_at      = NOW()
+        SET    credits_remaining = GREATEST(0, COALESCE(credits_remaining, 0) - ${credits}),
+               updated_at        = NOW()
         WHERE  id = ${userId}
       `.catch(() => { /* best-effort */ })
     },

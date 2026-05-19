@@ -93,6 +93,7 @@ export async function creditGuard(
       }
     }
 
+    // RPC returns jsonb — Supabase client parses it into a plain object
     const result = data as {
       allowed:          boolean
       reason:           string
@@ -100,6 +101,7 @@ export async function creditGuard(
       daily_scans:      number
       daily_limit:      number
       upgrade_required: boolean
+      credits_remaining?: number
     }
 
     if (!result.allowed) {
@@ -119,7 +121,8 @@ export async function creditGuard(
       plan:             result.plan,
       dailyScans:       result.daily_scans,
       dailyLimit:       result.daily_limit,
-      creditsRemaining: unlimited ? 999_999 : Math.max(0, result.daily_limit - result.daily_scans),
+      // Use credits_remaining from RPC response (real profile column name)
+      creditsRemaining: result.credits_remaining ?? (unlimited ? 999_999 : Math.max(0, result.daily_limit - result.daily_scans)),
       unlimited,
       overage:          result.reason === 'credit_overage',
     }
