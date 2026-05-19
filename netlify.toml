@@ -1,3 +1,12 @@
+# =============================================================================
+# Aiscern — Netlify Configuration
+# Handles heavy compute API routes (/api/detect/*, /api/forensic/*, /api/inference/*)
+# that need the 26-second Pro plan function timeout (vs Vercel's 10s max).
+#
+# Deploy:  netlify deploy --prod
+# Env:     Set all vars in Netlify dashboard → Site settings → Environment variables
+# =============================================================================
+
 [build]
   base    = "frontend"
   command = "npm run build"
@@ -5,29 +14,74 @@
 
 [build.environment]
   NEXT_TELEMETRY_DISABLED = "1"
-  DEPLOYMENT_PLATFORM     = "netlify"
   NODE_VERSION            = "20"
 
+# ── Next.js plugin (required for App Router on Netlify) ──────────────────────
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# Netlify free functions hard-timeout at 10s.
-# All /api/* routes proxy to Vercel via the CF Worker load balancer.
-# Netlify serves static pages only.
-[[redirects]]
-  from   = "/api/*"
-  to     = "https://aiscern.vercel.app/api/:splat"
-  status = 200
-  force  = true
+# ── Function timeout: 26s (Netlify Pro plan max) ─────────────────────────────
+# This is the only reason detect/* routes come to Netlify instead of Vercel.
+[functions]
+  directory         = ".netlify/functions"
+  node_bundler      = "nft"
+  included_files    = ["public/**"]
 
+[functions."___netlify-server-handler"]
+  timeout_seconds = 26
+
+# ── Edge functions for low-latency middleware ─────────────────────────────────
+[[edge_functions]]
+  path   = "/api/health"
+  function = "health-check"
+
+# ── Security headers on all responses ────────────────────────────────────────
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options           = "DENY"
+    X-Content-Type-Options    = "nosniff"
+    Referrer-Policy           = "strict-origin-when-cross-origin"
+    Permissions-Policy        = "camera=(), microphone=(), geolocation=()"
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+
+# Cache immutable Next.js static assets forever at CDN
 [[headers]]
   for = "/_next/static/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
-[[headers]]
-  for = "/*"
-  [headers.values]
-    X-Deployment-Platform = "netlify"
-    X-Frame-Options       = "DENY"
-    X-Content-Type-Options = "nosniff"
+# ── Redirects: only handle detect/* routes — everything else → Vercel ────────
+# The Cloudflare load balancer handles routing, so these are just a safety net
+# for direct Netlify requests (e.g. during testing).
+
+# Health check (for load balancer probing)
+[[redirects]]
+  from   = "/api/health"
+  to     = "/api/health"
+  status = 200
+
+# Block auth and billing routes — they must go through Vercel
+[[redirects]]
+  from   = "/api/auth/*"
+  to     = "https://aiscern.vercel.app/api/auth/:splat"
+  status = 301
+  force  = false
+
+[[redirects]]
+  from   = "/api/billing/*"
+  to     = "https://aiscern.vercel.app/api/billing/:splat"
+  status = 301
+  force  = false
+
+[[redirects]]
+  from   = "/api/admin/*"
+  to     = "https://aiscern.vercel.app/api/admin/:splat"
+  status = 301
+  force  = false
+
+# All other routes pass through to Next.js (handled by @netlify/plugin-nextjs)
+[[redirects]]
+  from   = "/*"
+  to     = "/.netlify/functions/___netlify-server-handler"
+  status = 200

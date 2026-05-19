@@ -1,7 +1,28 @@
+/**
+ * Aiscern — Credit Guard Middleware v2
+ *
+ * Guards every /api/detect/* route. In order:
+ *  1. Clerk auth → identifies user (or anon IP)
+ *  2. Calls check_and_increment_scan() — atomic credit + daily-limit check in Supabase
+ *  3. For anon users → Redis rate limit (5/day)
+ *
+ * The DB function handles:
+ *  - Modality access (free tier = text+image only)
+ *  - Daily scan limit per plan
+ *  - Credit balance deduction for paid plans
+ *  - Overage: if daily limit hit but credits remain → deduct from balance
+ *
+ * Usage in any /api/detect/* route:
+ *   const guard = await creditGuard(req, 'image')  // throws HTTPError on failure
+ *   // guard.userId, guard.plan, guard.creditsRemaining available
+ */
+
 import { NextRequest, NextResponse } from 'next/server'
 import { auth }             from '@clerk/nextjs/server'
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
-import { checkRateLimit, rateLimitResponse } from '@/lib/ratelimit'
+import { checkRateLimit }   from '@/lib/ratelimit'
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface CreditGuardResult {
   userId:           string
@@ -10,117 +31,175 @@ export interface CreditGuardResult {
   dailyScans:       number
   dailyLimit:       number
   unlimited?:       boolean
+  overage?:         boolean     // true if scan came from credit balance overage
 }
 
 export class HTTPError extends Error {
-  constructor(public status: number, message: string, public body?: object) {
+  constructor(
+    public status: number,
+    message: string,
+    public body?: Record<string, unknown>,
+  ) {
     super(message)
+    this.name = 'HTTPError'
   }
 }
 
-// Plan limits (mirrors plan_limits table — used for anon fallback without DB call)
-const PLAN_LIMITS: Record<string, { daily: number; modalities: string[] }> = {
-  free:       { daily: 10,  modalities: ['text', 'image'] },
-  pro:        { daily: 100, modalities: ['text', 'image', 'audio', 'video', 'url'] },
-  team:       { daily: 500, modalities: ['text', 'image', 'audio', 'video', 'url'] },
-  enterprise: { daily: -1,  modalities: ['text', 'image', 'audio', 'video', 'url'] },
+// Modalities available per plan — mirrors plan_limits table
+// Used as a fast local check before hitting the DB
+const PLAN_MODALITIES: Record<string, string[]> = {
+  free:       ['text', 'image'],
+  starter:    ['text', 'image', 'audio', 'video', 'url'],
+  pro:        ['text', 'image', 'audio', 'video', 'url', 'batch'],
+  enterprise: ['text', 'image', 'audio', 'video', 'url', 'batch'],
+  anon:       ['text', 'image'],
 }
+
+// ── Main guard ────────────────────────────────────────────────────────────────
 
 export async function creditGuard(
   req:      NextRequest,
   scanType: string,
 ): Promise<CreditGuardResult> {
-  // ── Authenticated user ─────────────────────────────────────────────────────
+
+  // ── Authenticated user path ──────────────────────────────────────────────
+  let userId: string | null = null
   try {
-    const { userId } = await auth()
-    if (userId) {
-      const db    = getSupabaseAdmin()
-      const media = scanType  // e.g. 'text', 'image', 'audio', 'video', 'url'
+    const session = await auth()
+    userId = session?.userId ?? null
+  } catch {
+    // Clerk unavailable → fall through to anon path
+  }
 
-      // Atomic check + increment via DB function
-      const { data, error } = await db.rpc('check_and_increment_scan', {
-        p_user_id:    userId,
-        p_media_type: media,
-      })
+  if (userId) {
+    const db = getSupabaseAdmin()
 
-      if (error) {
-        // DB error — fail open but log it (don't block user on our error)
-        console.error('[creditGuard] DB error:', error.message)
-        return { userId, creditsRemaining: 1, plan: 'free', dailyScans: 0, dailyLimit: 10 }
-      }
+    // check_and_increment_scan is atomic (uses SELECT FOR UPDATE internally)
+    // Safe against concurrent requests from the same user
+    const { data, error } = await db.rpc('check_and_increment_scan', {
+      p_user_id:    userId,
+      p_media_type: scanType,
+    })
 
-      const result = data as {
-        allowed: boolean; reason: string; plan: string
-        daily_scans: number; daily_limit: number; upgrade_required: boolean
-      }
-
-      if (!result.allowed) {
-        const reason = result.reason === 'modality_not_included'
-          ? `Your ${result.plan} plan does not include ${media} detection. Upgrade to Pro to unlock all modalities.`
-          : result.reason === 'modality_credits_exhausted'
-            ? `You've used all 3 free ${media} detection credits. Upgrade to Pro for unlimited ${media} detection.`
-            : `Daily scan limit reached (${result.daily_scans}/${result.daily_limit}). Resets every 24 hours.`
-
-        const code = result.reason === 'modality_not_included' ? 'MODALITY_LOCKED'
-          : result.reason === 'modality_credits_exhausted' ? 'CREDITS_EXHAUSTED'
-          : 'DAILY_LIMIT_REACHED'
-
-        throw new HTTPError(402, reason, {
-          code,
-          plan:             result.plan,
-          daily_scans:      result.daily_scans,
-          daily_limit:      result.daily_limit,
-          upgrade_required: true,
-          upgrade_url:      '/pricing',
-        })
-      }
-
-      const limit   = PLAN_LIMITS[result.plan]?.daily ?? 10
-      const isUnlimited = limit === -1
-
+    if (error) {
+      // DB error — fail open (don't block user on our infrastructure error)
+      console.error('[creditGuard] DB RPC error:', error.message)
       return {
         userId,
-        plan:             result.plan,
-        dailyScans:       result.daily_scans,
-        dailyLimit:       result.daily_limit,
-        creditsRemaining: isUnlimited ? 999999 : Math.max(0, result.daily_limit - result.daily_scans),
-        unlimited:        isUnlimited,
+        creditsRemaining: 1,
+        plan:             'free',
+        dailyScans:       0,
+        dailyLimit:       10,
       }
     }
-  } catch (err) {
-    if (err instanceof HTTPError) throw err
-    // Clerk auth error — fall through to anon
+
+    const result = data as {
+      allowed:          boolean
+      reason:           string
+      plan:             string
+      daily_scans:      number
+      daily_limit:      number
+      upgrade_required: boolean
+    }
+
+    if (!result.allowed) {
+      throw new HTTPError(402, buildDenyMessage(result.reason, result.plan, scanType), {
+        code:             mapDenyCode(result.reason),
+        plan:             result.plan,
+        daily_scans:      result.daily_scans,
+        daily_limit:      result.daily_limit,
+        upgrade_required: true,
+        upgrade_url:      '/dashboard/credits',
+      })
+    }
+
+    const unlimited = result.daily_limit === -1
+    return {
+      userId,
+      plan:             result.plan,
+      dailyScans:       result.daily_scans,
+      dailyLimit:       result.daily_limit,
+      creditsRemaining: unlimited ? 999_999 : Math.max(0, result.daily_limit - result.daily_scans),
+      unlimited,
+      overage:          result.reason === 'credit_overage',
+    }
   }
 
-  // ── Anonymous user — IP rate limiting ─────────────────────────────────────
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'anonymous'
+  // ── Anonymous user path ──────────────────────────────────────────────────
 
-  // Anon: only text/image, hard 5/day enforced via Redis
+  // Anon only gets text + image
   if (!['text', 'image'].includes(scanType)) {
-    throw new HTTPError(401, 'Sign in to use audio, video, and web scanning.', {
-      code: 'AUTH_REQUIRED', upgrade_url: '/signup',
+    throw new HTTPError(401, `Sign in to use ${scanType} detection.`, {
+      code:        'AUTH_REQUIRED',
+      upgrade_url: '/sign-up',
     })
   }
+
+  // IP-based rate limit: 5 anonymous scans per day via Redis
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+          ?? req.headers.get('cf-connecting-ip')
+          ?? 'unknown'
 
   const rl = await checkRateLimit('anon_scan', ip)
   if (rl.limited) {
     throw new HTTPError(429, 'Anonymous scan limit reached. Sign in for 10 free scans per day.', {
-      code: 'ANON_LIMIT_REACHED', upgrade_url: '/signup',
+      code:        'ANON_LIMIT_REACHED',
+      upgrade_url: '/sign-up',
+      reset_at:    rl.reset,
     })
   }
 
   return {
     userId:           `anon_${ip}`,
     plan:             'anon',
-    dailyScans:       0,
+    dailyScans:       rl.current ?? 0,
     dailyLimit:       5,
-    creditsRemaining: 5,
+    creditsRemaining: Math.max(0, 5 - (rl.current ?? 0)),
   }
 }
 
+// ── Response helpers ──────────────────────────────────────────────────────────
+
 export function httpErrorResponse(err: HTTPError): NextResponse {
   return NextResponse.json(
-    { success: false, error: { code: 'ERROR', message: err.message, ...err.body } },
+    { success: false, error: { message: err.message, ...err.body } },
     { status: err.status },
   )
+}
+
+// Adds guard metadata to response headers (for debugging / client toasts)
+export function injectGuardHeaders(response: NextResponse, guard: CreditGuardResult): NextResponse {
+  response.headers.set('X-Credits-Remaining', String(guard.creditsRemaining))
+  response.headers.set('X-Daily-Scans',       String(guard.dailyScans))
+  response.headers.set('X-Plan',              guard.plan)
+  if (guard.unlimited) response.headers.set('X-Plan-Unlimited', 'true')
+  if (guard.overage)   response.headers.set('X-Credit-Overage', 'true')
+  return response
+}
+
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
+function buildDenyMessage(reason: string, plan: string, scanType: string): string {
+  switch (reason) {
+    case 'modality_not_included':
+      return `Your ${plan} plan does not include ${scanType} detection. Upgrade to unlock all scan types.`
+    case 'modality_credits_exhausted':
+      return `You've used all your ${plan} credits. Purchase more to continue scanning.`
+    case 'daily_limit_reached':
+      return `Daily scan limit reached on your ${plan} plan. Resets at midnight PKT, or purchase more credits.`
+    case 'user_not_found':
+      return 'Account not found. Please sign out and sign in again.'
+    default:
+      return 'Scan limit reached. Upgrade your plan or purchase more credits.'
+  }
+}
+
+function mapDenyCode(reason: string): string {
+  const map: Record<string, string> = {
+    modality_not_included:    'MODALITY_LOCKED',
+    modality_credits_exhausted: 'CREDITS_EXHAUSTED',
+    daily_limit_reached:      'DAILY_LIMIT_REACHED',
+    user_not_found:           'USER_NOT_FOUND',
+  }
+  return map[reason] ?? 'LIMIT_REACHED'
 }

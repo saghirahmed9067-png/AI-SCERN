@@ -1,16 +1,47 @@
-name = "aiscern-lb"
-main = "load-balancer.ts"
-compatibility_date = "2024-09-23"
+# =============================================================================
+# Aiscern — Cloudflare Load Balancer Worker
+# Deploy: wrangler deploy --config cf-workers/wrangler-lb.toml
+# =============================================================================
+
+name              = "aiscern-lb"
+main              = "cf-workers/load-balancer.ts"
+compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
+# ── KV namespace for health state + static asset cache ───────────────────────
+# Create: wrangler kv:namespace create "HEALTH_KV" --config cf-workers/wrangler-lb.toml
 [[kv_namespaces]]
-binding = "HEALTH_KV"
-id = "04ec46d9d2814f9c9f8e5a577eac650f"
+  binding = "HEALTH_KV"
+  id      = "04ec46d9d2814f9c9f8e5a577eac650f"    # replace with your KV namespace ID
 
+# ── Environment variables (non-secret — set public origin URLs here) ─────────
 [vars]
-VERCEL_URL    = "https://aiscern.vercel.app"
-NETLIFY_URL   = "https://aiscern.netlify.app"
-CF_PAGES_URL  = "https://aiscern.pages.dev"
+  VERCEL_URL    = "https://aiscern.vercel.app"
+  NETLIFY_URL   = "https://aiscern.netlify.app"
+  CF_PAGES_URL  = "https://aiscern.pages.dev"
 
-# Set via: wrangler secret put LB_SECRET
-# LB_SECRET = "set-via-wrangler-secret"
+# LB_SECRET must be set as a Wrangler secret (never in plaintext):
+#   wrangler secret put LB_SECRET --config cf-workers/wrangler-lb.toml
+
+# ── Routes: catch all traffic to aiscern.com ─────────────────────────────────
+[[routes]]
+  pattern = "aiscern.com/*"
+  zone_name = "aiscern.com"
+
+[[routes]]
+  pattern = "www.aiscern.com/*"
+  zone_name = "aiscern.com"
+
+# ── Limits ────────────────────────────────────────────────────────────────────
+[limits]
+  cpu_ms = 50    # Workers have 50ms CPU per request — proxying is mostly I/O so this is fine
+
+# ── Observability ─────────────────────────────────────────────────────────────
+[observability]
+  enabled = true
+
+# ── Dev environment (wrangler dev) ────────────────────────────────────────────
+[env.dev.vars]
+  VERCEL_URL   = "http://localhost:3000"
+  NETLIFY_URL  = "http://localhost:8888"
+  CF_PAGES_URL = "http://localhost:3000"
