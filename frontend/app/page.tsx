@@ -10,14 +10,13 @@ import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { SiteFooter } from '@/components/site-footer'
 import { HeroHeadline } from '@/components/hero/HeroHeadline'
 import {
-  Shield, Brain, Eye, Mic, FileText, Globe, Zap, BarChart3,
+  Shield, Brain, Eye, FileText, Globe, Zap,
   ArrowRight, CheckCircle, XCircle, HelpCircle,
   Image as ImageIcon, Video, Music, ChevronRight, Loader2,
-  MessageSquare, Cpu, Lock, Database, AlertTriangle, Sparkles,
-  TrendingUp, Users, Award, Play, Menu, X, Search,
-  Scan, Fingerprint, Waves, Dna, Bot, Radio,
-  Activity, Layers, Wand2, Star, ChevronDown,
-  Quote, FlaskConical, GraduationCap,
+  MessageSquare, Cpu, Lock, Database, Sparkles,
+  TrendingUp, Users, Menu, X, Search,
+  Scan, Bot,
+  Activity, Layers, Wand2, Star, ChevronDown, FlaskConical, GraduationCap,
   Scale, ShieldCheck, Microscope, Pen, Megaphone, Heart,
 } from 'lucide-react'
 

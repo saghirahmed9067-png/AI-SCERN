@@ -6,7 +6,7 @@ import { motion } from 'framer-motion'
 import {
   Mail, Shield, BarChart3, Calendar, Edit3, Save, X,
   Loader2, Check, FileText, Image as ImageIcon, Music, Video,
-  Brain, User, Zap, AtSign, Upload, Camera, Globe, Crown, ChevronRight
+  Brain, User, Zap, Camera, Crown, ChevronRight
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/auth-provider'
