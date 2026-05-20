@@ -75,6 +75,8 @@ export interface RateLimitResult {
   remaining: number
   reset:     number
   limited:   boolean
+  // Number of requests used in the current window (0..requests)
+  current:   number
 }
 
 export async function checkRateLimit(
@@ -86,11 +88,14 @@ export async function checkRateLimit(
   if (limiter) {
     try {
       const result = await limiter.limit(identifier)
+      const cfg = LIMITS[type]
+      const current = cfg.requests - (result.remaining ?? 0)
       return {
         success:   result.success,
         remaining: result.remaining,
         reset:     result.reset,
         limited:   !result.success,
+        current:   current,
       }
     } catch {
       console.warn('[ratelimit] Redis error, failing open for', type, identifier)
@@ -104,11 +109,14 @@ export async function checkRateLimit(
   const unit     = parts[1]
   const windowMs = num * (unit === 'h' ? 3600000 : unit === 'm' ? 60000 : 1000)
   const allowed  = localCheckRateLimit(`${type}:${identifier}`, cfg.requests, windowMs)
+  const mapEntry = _localMap.get(`${type}:${identifier}`)
+  const current = mapEntry?.count ?? (allowed ? 1 : cfg.requests)
   return {
     success:   allowed,
-    remaining: allowed ? cfg.requests - 1 : 0,
+    remaining: allowed ? Math.max(0, cfg.requests - current) : 0,
     reset:     Date.now() + windowMs,
     limited:   !allowed,
+    current,
   }
 }
 
