@@ -34,7 +34,7 @@ function LoginContent() {
   )
 
   return (
-    <div className="min-h-screen bg-[#050510] flex flex-col items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen bg-[#050510] antialiased flex items-center justify-center px-4 py-6 sm:px-6 lg:px-8 relative overflow-hidden">
 
       {/* Ambient bg */}
       <div className="absolute inset-0 pointer-events-none">
@@ -54,18 +54,18 @@ function LoginContent() {
       </Link>
 
       {/* Card */}
-      <div className="relative z-10 w-full max-w-[420px]">
+      <div className="relative z-10 w-full max-w-[min(92vw,450px)]">
 
         {/* Custom header */}
-        <div className="bg-[#0c0c20] border-2 border-[#2f2f58] border-b-0 rounded-t-2xl px-7 pt-7 pb-5">
+        <div className="bg-[#0c0c20] border border-white/10 rounded-t-3xl px-5 sm:px-7 pt-7 pb-5 shadow-[0_24px_60px_rgba(0,0,0,0.16)]">
           <div className="flex items-center gap-2 mb-3">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-widest uppercase text-violet-300 bg-violet-500/10 border border-violet-500/25 px-2.5 py-1 rounded-full">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               Secure sign in
             </span>
           </div>
-          <h1 className="text-white font-bold text-[22px] tracking-tight leading-tight">Welcome back</h1>
-          <p className="text-slate-400 text-[13.5px] mt-1.5 leading-relaxed">Sign in to your Aiscern account</p>
+          <h1 className="text-white font-bold text-[21px] sm:text-[24px] tracking-tight leading-tight">Welcome back</h1>
+          <p className="text-slate-400 text-[13px] sm:text-[14px] mt-1.5 leading-relaxed max-w-xl">Sign in to your Aiscern account with your secure Aiscern credentials.</p>
         </div>
 
         {/* Clerk body */}
@@ -88,22 +88,23 @@ function LoginContent() {
             },
             elements: {
               rootBox: 'w-full',
-              card: 'bg-[#0c0c20] border-2 border-[#2f2f58] border-t-0 shadow-[0_32px_80px_rgba(0,0,0,0.8)] rounded-b-2xl overflow-hidden p-0',
-              cardBox: 'rounded-b-2xl',
+              root: 'min-w-0',
+              card: 'bg-[#0c0c20] border border-white/10 border-t-0 shadow-[0_28px_72px_rgba(0,0,0,0.16)] rounded-b-3xl overflow-hidden p-0',
+              cardBox: 'rounded-b-3xl',
               header: '!hidden',
-              main: 'px-7 pb-2 pt-6',
+              main: 'px-5 sm:px-7 pb-4 pt-6',
               formFieldRow: 'mb-4',
               formFieldLabelRow: 'flex items-center justify-between mb-2',
               formFieldLabel: 'text-[12px] font-semibold tracking-[0.07em] uppercase text-slate-300',
               formFieldHintText: 'text-slate-400 text-[12px] mt-1.5',
-              formFieldInput: 'w-full bg-[#080818] border-2 border-[#2f2f58] text-[#f1f5ff] placeholder:text-slate-600 rounded-[10px] text-[14px] px-3.5 py-2.5 transition-all duration-150 focus:outline-none focus:border-violet-500 focus:bg-[#0a0a22] focus:shadow-[0_0_0_4px_rgba(124,58,237,0.15)] hover:border-[#3d3d6e]',
+              formFieldInput: 'w-full bg-[#080818] border border-[#2f2f58] text-[#f1f5ff] placeholder:text-slate-600 rounded-[10px] text-[14px] min-h-[44px] px-3.5 py-3 transition-all duration-150 focus:outline-none focus:border-violet-500 focus:bg-[#0a0a22] focus:shadow-[0_0_0_4px_rgba(124,58,237,0.15)] hover:border-[#3d3d6e]',
               formFieldInputShowPasswordButton: 'text-slate-500 hover:text-slate-300 transition-colors pr-1',
               formFieldAction: 'text-violet-400 hover:text-violet-300 text-[12px] font-medium transition-colors',
               formFieldErrorText: 'text-rose-400 text-[12.5px] mt-2 font-medium',
               formFieldSuccessText: 'text-emerald-400 text-[12.5px] mt-2 font-medium',
               formFieldWarningText: 'text-amber-400 text-[12.5px] mt-2 font-medium',
               otpCodeFieldInput: 'bg-[#080818] border-2 border-[#2f2f58] text-white font-mono text-[20px] font-bold rounded-[10px] text-center w-11 h-12 focus:outline-none focus:border-violet-500 focus:shadow-[0_0_0_4px_rgba(124,58,237,0.15)] transition-all duration-150',
-              formButtonPrimary: 'w-full bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white font-semibold text-[14px] rounded-[10px] py-[11px] border-0 shadow-[0_4px_24px_rgba(124,58,237,0.45)] hover:shadow-[0_6px_32px_rgba(124,58,237,0.55)] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed',
+              formButtonPrimary: 'w-full bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white font-semibold text-[14px] rounded-[10px] py-3 border-0 shadow-[0_4px_24px_rgba(124,58,237,0.35)] hover:shadow-[0_6px_32px_rgba(124,58,237,0.45)] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed',
               formButtonReset: 'text-violet-400 hover:text-violet-300 text-[13px] font-medium transition-colors',
               dividerRow: 'my-5',
               dividerLine: 'bg-[#2f2f58]',
@@ -131,9 +132,9 @@ function LoginContent() {
       </div>
 
       {/* Trust pills */}
-      <div className="relative z-10 flex items-center gap-3 mt-6 flex-wrap justify-center">
+      <div className="relative z-10 flex flex-wrap justify-center gap-2 mt-6 max-w-[min(92vw,420px)] mx-auto">
         {TRUST_PILLS.map(({ icon: Icon, label }) => (
-          <span key={label} className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-slate-400 bg-white/[0.04] border border-white/[0.08] px-3 py-1.5 rounded-full">
+          <span key={label} className="inline-flex min-w-[130px] max-w-full items-center gap-1.5 text-[11px] sm:text-[11.5px] font-medium text-slate-400 bg-white/[0.04] border border-white/[0.08] px-3.5 py-2 rounded-full">
             <Icon className="w-3.5 h-3.5 text-violet-400" />
             {label}
           </span>
