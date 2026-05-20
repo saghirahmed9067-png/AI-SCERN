@@ -68,11 +68,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ── CORS ─────────────────────────────────────────────────────────────────────
+# Restrict cross-origin access to known Aiscern origins only.
+# Do NOT use allow_origins=["*"] — this is an internal forensic API that
+# processes image URLs; wildcard CORS would expose it to arbitrary third-party sites.
+_RAW_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://aiscern.com")
+ALLOWED_ORIGINS = [o.strip() for o in _RAW_ORIGINS.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["POST", "GET"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["POST", "GET", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+    allow_credentials=False,
 )
 
 # ── Routes ────────────────────────────────────────────────────────────────────

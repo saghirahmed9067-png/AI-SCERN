@@ -30,9 +30,62 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   }
 }
 
+// ── HTML sanitizer ────────────────────────────────────────────────────────────
+// Strips all tags except a safe allowlist and removes dangerous attributes.
+// Defends against XSS if blog content were ever compromised or injected.
+const SAFE_TAGS = new Set([
+  'h1','h2','h3','h4','h5','h6',
+  'p','br','hr',
+  'strong','em','code','pre',
+  'ul','ol','li',
+  'blockquote',
+  'a',
+])
+
+function sanitizeHtml(html: string): string {
+  // Remove dangerous elements and their content wholesale
+  html = html.replace(/<script[\s\S]*?<\/script>/gi, '')
+  html = html.replace(/<style[\s\S]*?<\/style>/gi, '')
+  html = html.replace(
+    /<(iframe|object|embed|form|input|textarea|button|select|meta|link|base)(\s[^>]*)?\/?>(<\/\1>)?/gi,
+    ''
+  )
+
+  // Strip or sanitize all remaining tags
+  html = html.replace(/<(\/?[a-zA-Z][a-zA-Z0-9]*)(\s[^>]*)?\/?>/ , (match) => match) // placeholder
+  html = html.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)(\s[^>]*)?>?/g, (match, tagName) => {
+    const tag = (tagName ?? '').toLowerCase()
+    if (!SAFE_TAGS.has(tag)) return ''
+
+    // Reconstruct only safe attributes
+    const allowedForTag = new Set(['class', ...(tag === 'a' ? ['href', 'title'] : [])])
+    const attrRegex = /([a-zA-Z\-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]*))/g
+    let safeAttrs = ''
+    let m: RegExpExecArray | null
+    while ((m = attrRegex.exec(match)) !== null) {
+      const name  = m[1].toLowerCase()
+      const value = (m[2] ?? m[3] ?? m[4] ?? '').trim()
+      if (!allowedForTag.has(name)) continue
+      // Block javascript:, data:, vbscript: URIs
+      if (name === 'href' && /^\s*(javascript|data|vbscript):/i.test(value)) continue
+      const escaped = value.replace(/"/g, '&quot;')
+      if (name === 'href' && /^https?:\/\//i.test(value)) {
+        safeAttrs += ` href="${escaped}" target="_blank" rel="noopener noreferrer"`
+      } else {
+        safeAttrs += ` ${name}="${escaped}"`
+      }
+    }
+
+    const isClosing = match.startsWith('</')
+    return isClosing ? `</${tag}>` : `<${tag}${safeAttrs}>`
+  })
+
+  return html
+}
+
 // ── Minimal markdown → HTML renderer (no heavy runtime dep) ──────────────────
 function renderMarkdown(md: string): string {
-  return md
+  const result = md
     // Headings
     .replace(/^### (.+)$/gm, '<h3 class="text-lg font-bold text-text-primary mt-8 mb-3">$1</h3>')
     .replace(/^## (.+)$/gm,  '<h2 class="text-xl font-black text-text-primary mt-10 mb-4 pb-2 border-b border-border/40">$1</h2>')
@@ -59,6 +112,9 @@ function renderMarkdown(md: string): string {
       return `<p class="text-text-muted leading-relaxed mb-4">${t.replace(/\n/g, ' ')}</p>`
     })
     .join('\n')
+
+  // Sanitize the rendered HTML before returning to prevent XSS
+  return sanitizeHtml(result)
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -67,7 +123,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const post = getPostBySlug(slug)
   if (!post) notFound()
 
-  const html = renderMarkdown(post.content)
+  const html = renderMarkdown(post.content) // sanitizeHtml applied inside
 
   return (
     <div className="min-h-screen bg-background text-text-primary">

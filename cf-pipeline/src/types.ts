@@ -12,6 +12,8 @@ export interface Env {
   HF_VIDEO_REPO?:   string   // video dataset (default: saghi776/aiscern-video-dataset)
   WORKER_NUM?:      string   // "1"–"15" scraper | "20" push+cleanup
   PIPELINE_ENABLED?: string  // "false" to kill all workers
+  PIPELINE_SECRET:  string   // Shared secret (Bearer token) for /trigger/* endpoint auth
+  ALLOWED_ORIGINS?: string   // Comma-separated CORS origin allowlist (default: https://aiscern.com)
 }
 
 export type MediaType = 'text' | 'image' | 'audio' | 'video'
