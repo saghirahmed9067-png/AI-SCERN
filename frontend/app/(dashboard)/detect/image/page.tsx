@@ -160,7 +160,6 @@ Analyzed: ${new Date().toLocaleString()}`
       {zoomed && preview && (
         <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setZoomed(false)}>
           <div className="relative max-w-full max-h-full">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={preview} alt="Zoomed" className="max-w-full max-h-[90vh] object-contain rounded-xl" />
             <button onClick={() => setZoomed(false)}
               className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center text-white hover:bg-black/80">
@@ -225,7 +224,6 @@ Analyzed: ${new Date().toLocaleString()}`
           ) : (
             <div className="card space-y-4">
               <div className="relative rounded-xl overflow-hidden bg-surface-active group">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={preview!} alt="Preview" className="w-full max-h-72 object-contain" />
                 <button onClick={() => setZoomed(true)}
                   className="absolute inset-0 bg-black/0 group-hover:bg-black/30 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100">
