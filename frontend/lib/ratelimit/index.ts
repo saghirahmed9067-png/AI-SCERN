@@ -36,7 +36,7 @@ function getRedis(): Redis | null {
 }
 
 // ── Rate limiter config ───────────────────────────────────────────────────────
-type LimiterKey = 'text' | 'image' | 'audio' | 'video' | 'scraper' | 'upload' | 'batch' | 'anon_scan' | 'chat' | 'admin'
+type LimiterKey = 'text' | 'image' | 'audio' | 'video' | 'scraper' | 'upload' | 'batch' | 'anon_scan' | 'chat' | 'admin' | 'credit_purchase'
 
 const LIMITS: Record<LimiterKey, { requests: number; window: `${number} ${'s' | 'm' | 'h'}` }> = {
   text:    { requests: 30, window: '1 m' },
@@ -48,6 +48,7 @@ const LIMITS: Record<LimiterKey, { requests: number; window: `${number} ${'s' | 
   batch:     { requests:  3, window: '1 m' },
   anon_scan: { requests:  5, window: '24 h' },
   chat:      { requests: 20, window: '1 m' },
+  credit_purchase: { requests: 10, window: '1 h' },
   admin:     { requests: 10, window: '1 m' },
 }
 
