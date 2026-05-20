@@ -7,6 +7,7 @@ import { fireScanCompleted }                           from '@/lib/inngest/send-
 import { sanitizeText } from '@/lib/utils/sanitize'
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { logModelPredictions } from '@/lib/accuracy/log-predictions'
+import { queryDetectionRAG } from '@/lib/rag/detection-rag'
 
 export const dynamic = 'force-dynamic'
 
@@ -66,6 +67,27 @@ export async function POST(req: NextRequest) {
     const result         = await analyzeText(sanitized)
     const processingTime = Date.now() - start
 
+    // ── RAG blending (gated by DETECTION_RAG_ENABLED) ─────────────────────────
+    let finalVerdict   = result.verdict
+    let finalConfidence = result.confidence
+    let ragResult: any = null
+    
+    if (process.env.DETECTION_RAG_ENABLED === 'true') {
+      try {
+        ragResult = await queryDetectionRAG(sanitized, 'text', result.confidence)
+        if (ragResult?.rag_applied) {
+          finalConfidence = ragResult.blended_score
+          // Re-determine verdict based on blended score
+          if (finalConfidence >= 0.62)      finalVerdict = 'AI'
+          else if (finalConfidence <= 0.38) finalVerdict = 'HUMAN'
+          else                               finalVerdict = 'UNCERTAIN'
+        }
+      } catch (e) {
+        console.warn('[detect/text] RAG query error (non-blocking):', e)
+        // Continue with original result on RAG failure
+      }
+    }
+
     await setCachedDetection('text', hash, result)
 
     let scanId: string | null = null
@@ -75,14 +97,19 @@ export async function POST(req: NextRequest) {
           user_id:          userId,
           media_type:       'text',
           content_preview:  sanitized.substring(0, 500),
-          verdict:          result.verdict,
-          confidence_score: result.confidence,
+          verdict:          finalVerdict,
+          confidence_score: finalConfidence,
           signals:          result.signals,
           processing_time:  processingTime,
           model_used:       result.model_used,
           model_version:    result.model_version,
           status:           'complete',
-          metadata:         { char_count: sanitized.length, word_count: sanitized.split(/\s+/).length },
+          metadata:         { 
+            char_count: sanitized.length, 
+            word_count: sanitized.split(/\s+/).length,
+            rag_applied: ragResult?.rag_applied ?? false,
+            rag_confidence: ragResult?.retrieval_confidence,
+          },
         }).select('id').single()
         if (insertErr) console.error('[detect/text] scan insert error:', insertErr.message, insertErr.code)
         scanId = scanRow?.id ?? null
@@ -95,27 +122,39 @@ export async function POST(req: NextRequest) {
           anon_id:          userId,
           media_type:       'text',
           content_preview:  sanitized.substring(0, 200),
-          verdict:          result.verdict,
-          confidence_score: result.confidence,
+          verdict:          finalVerdict,
+          confidence_score: finalConfidence,
           processing_time:  processingTime,
           model_used:       result.model_used,
           status:           'complete',
+          metadata:         { rag_applied: ragResult?.rag_applied ?? false },
         })
       } catch { /* non-fatal */ }
     }
 
     // Fire Inngest background job (fire-and-forget, non-blocking)
-    if (scanId) fireScanCompleted({ scan_id: scanId, user_id: userId, media_type: 'text', verdict: result.verdict, confidence: result.confidence, model_used: result.model_used })
+    if (scanId) fireScanCompleted({ scan_id: scanId, user_id: userId, media_type: 'text', verdict: finalVerdict, confidence: finalConfidence, model_used: result.model_used })
 
-    // Accuracy monitoring — fire-and-forget, never blocks response
+    // Accuracy monitoring — fire-and-forget, never blocks response (uses final verdict from RAG blending)
     if (scanId && result.model_breakdown?.length) {
-      void logModelPredictions(scanId, 'text', result.model_breakdown, result.verdict)
+      void logModelPredictions(scanId, 'text', result.model_breakdown, finalVerdict)
     }
 
     return NextResponse.json({
       success: true,
       scan_id: scanId,
-      result:  { ...result, processing_time: processingTime },
+      result:  { 
+        ...result, 
+        verdict: finalVerdict,
+        confidence: finalConfidence,
+        processing_time: processingTime,
+        rag_stats: ragResult ? {
+          rag_applied: ragResult.rag_applied,
+          retrieval_confidence: ragResult.retrieval_confidence,
+          neighbour_count: ragResult.neighbour_count,
+          ai_ratio: ragResult.ai_ratio,
+        } : undefined,
+      },
     })
   } catch (err) {
     return NextResponse.json(

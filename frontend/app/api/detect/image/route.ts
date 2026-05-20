@@ -7,6 +7,7 @@ import { fireScanCompleted }             from '@/lib/inngest/send-scan-event'
 import { getSupabaseAdmin }          from '@/lib/supabase/admin'
 import { getR2Buffer, r2Available }  from '@/lib/storage/r2'
 import { logModelPredictions }       from '@/lib/accuracy/log-predictions'
+import { queryDetectionRAG } from '@/lib/rag/detection-rag'
 
 export const dynamic = 'force-dynamic'
 
@@ -107,6 +108,30 @@ export async function POST(req: NextRequest) {
     const result         = await analyzeImage(buffer, mimeType, fileName)
     const processingTime = Date.now() - start
 
+    // ── RAG blending for images (uses filename as description) ────────────────
+    // Note: For optimal results, pass actual image analysis text in request body.
+    // For now we use fileName as a proxy description.
+    let finalVerdict   = result.verdict
+    let finalConfidence = result.confidence
+    let ragResult: any = null
+    
+    if (process.env.DETECTION_RAG_ENABLED === 'true') {
+      try {
+        // Use filename or a generic description for image RAG
+        const imageDescription = fileName || 'uploaded image'
+        ragResult = await queryDetectionRAG(imageDescription, 'image', result.confidence)
+        if (ragResult?.rag_applied) {
+          finalConfidence = ragResult.blended_score
+          // Re-determine verdict based on blended score
+          if (finalConfidence >= 0.55)      finalVerdict = 'AI'
+          else if (finalConfidence <= 0.40) finalVerdict = 'HUMAN'
+          else                               finalVerdict = 'UNCERTAIN'
+        }
+      } catch (e) {
+        console.warn('[detect/image] RAG query error (non-blocking):', e)
+      }
+    }
+
     await setCachedDetection('image', hash, result)
 
     let scanId: string | null = null
@@ -118,25 +143,30 @@ export async function POST(req: NextRequest) {
           file_name:        fileName,
           file_size:        fileSize,
           r2_key:           r2Key,
-          verdict:          result.verdict,
-          confidence_score: result.confidence,
+          verdict:          finalVerdict,
+          confidence_score: finalConfidence,
           signals:          result.signals,
           processing_time:  processingTime,
           model_used:       result.model_used,
           model_version:    result.model_version,
           status:           'complete',
-          metadata:         { format: mimeType, size_kb: Math.round(fileSize / 1024), r2: !!r2Key },
+          metadata:         { 
+            format: mimeType, 
+            size_kb: Math.round(fileSize / 1024), 
+            r2: !!r2Key,
+            rag_applied: ragResult?.rag_applied ?? false,
+          },
         }).select('id').single()
         scanId = sr?.id ?? null
       } catch { /* non-fatal */ }
     }
 
     // Fire Inngest background job (fire-and-forget, non-blocking)
-    if (scanId) fireScanCompleted({ scan_id: scanId, user_id: userId, media_type: 'image', verdict: result.verdict, confidence: result.confidence, model_used: result.model_used })
+    if (scanId) fireScanCompleted({ scan_id: scanId, user_id: userId, media_type: 'image', verdict: finalVerdict, confidence: finalConfidence, model_used: result.model_used })
 
-    // Accuracy monitoring — fire-and-forget
+    // Accuracy monitoring — fire-and-forget (uses final verdict from RAG blending)
     if (scanId && result.model_breakdown?.length) {
-      void logModelPredictions(scanId, 'image', result.model_breakdown, result.verdict)
+      void logModelPredictions(scanId, 'image', result.model_breakdown, finalVerdict)
     }
 
     // ── Fire forensic cascade (non-blocking, parallel to response) ────────────
@@ -165,8 +195,8 @@ export async function POST(req: NextRequest) {
           provenance:               null,
           final_verdict:            null,
           existing_ensemble_result: {
-            confidence: result.confidence / 100,
-            label:      result.verdict === 'AI' ? 'ai' : result.verdict === 'HUMAN' ? 'human' : 'uncertain',
+            confidence: finalConfidence / 100,
+            label:      finalVerdict === 'AI' ? 'ai' : finalVerdict === 'HUMAN' ? 'human' : 'uncertain',
           },
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -184,8 +214,8 @@ export async function POST(req: NextRequest) {
             imageUrl,
             r2Key,
             existingEnsembleResult: {
-              confidence: result.confidence / 100,
-              label:      result.verdict === 'AI' ? 'ai' : result.verdict === 'HUMAN' ? 'human' : 'uncertain',
+              confidence: finalConfidence / 100,
+              label:      finalVerdict === 'AI' ? 'ai' : finalVerdict === 'HUMAN' ? 'human' : 'uncertain',
             },
           },
         })
