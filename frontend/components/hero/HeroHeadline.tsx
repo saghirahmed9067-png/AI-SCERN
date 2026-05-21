@@ -118,7 +118,7 @@ export function HeroHeadline({ initialIndex = 0 }: { initialIndex?: number }) {
 
       {/* Dot indicators */}
       <motion.div
-        className="mt-2 sm:mt-4 flex items-center justify-center gap-1.5 sm:gap-2"
+        className="mt-3 sm:mt-4 flex items-center justify-center gap-2 sm:gap-2"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: reduced ? 0 : 0.4, delay: 0.3 }}
@@ -137,11 +137,11 @@ export function HeroHeadline({ initialIndex = 0 }: { initialIndex?: number }) {
               className={[
                 'rounded-full transition-all duration-300',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                // Mobile: very compact — 12px pill active, 6px dot inactive
-                // Desktop: standard — 20px pill active, 8px dot inactive
+                // Mobile: 24px pill active, 8px dot inactive — clearly visible
+                // Desktop: 20px pill active, 8px dot inactive
                 active
-                  ? `w-3 sm:w-5 h-[5px] sm:h-2 ${WORD_STYLES[w].bg}`
-                  : 'w-[6px] sm:w-2 h-[5px] sm:h-2 bg-white/25 hover:bg-white/50',
+                  ? `w-6 sm:w-5 h-2 sm:h-2 ${WORD_STYLES[w].bg}`
+                  : 'w-2 sm:w-2 h-2 sm:h-2 bg-white/30 hover:bg-white/50',
               ].join(' ')}
             />
           )
