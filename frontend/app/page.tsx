@@ -763,7 +763,7 @@ export default function HomePage() {
         </LazySection>
 
         {/* ══ TOOLS GRID ══ */}
-        <section id="tools" className="cv-auto py-16 sm:py-28 px-4 relative overflow-hidden">
+        <section id="tools" className="cv-auto py-16 sm:py-28 px-4 sm:px-6 relative overflow-hidden">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] pointer-events-none"
             style={{ background: 'radial-gradient(ellipse at top, rgba(139,92,246,0.06) 0%, transparent 65%)' }} />
 
@@ -823,7 +823,7 @@ export default function HomePage() {
         </section>
 
         {/* ══ HOW IT WORKS ══ */}
-        <section id="how" className="cv-auto py-16 sm:py-28 px-4 relative overflow-hidden">
+        <section id="how" className="cv-auto py-16 sm:py-28 px-4 sm:px-6 relative overflow-hidden">
           <div className="absolute inset-0 pointer-events-none"
             style={{ background: 'linear-gradient(180deg, rgba(15,15,23,0.5) 0%, rgba(8,8,13,1) 100%)' }} />
 
@@ -881,7 +881,7 @@ export default function HomePage() {
         </section>
 
         {/* ══ EARLY FEEDBACK ══ */}
-        <section className="py-16 sm:py-24 px-4 relative overflow-hidden">
+        <section className="py-16 sm:py-24 px-4 sm:px-6 relative overflow-hidden">
           <div className="absolute inset-0 pointer-events-none"
             style={{ background: 'radial-gradient(ellipse at center, rgba(139,92,246,0.04) 0%, transparent 60%)' }} />
 
@@ -914,7 +914,7 @@ export default function HomePage() {
         </section>
 
         {/* ══ TRUST / FEATURES — bento grid ══ */}
-        <section className="py-16 sm:py-28 px-4 border-t border-border/15 relative overflow-hidden">
+        <section className="py-16 sm:py-28 px-4 sm:px-6 border-t border-border/15 relative overflow-hidden">
           <div className="absolute inset-0 pointer-events-none"
             style={{ background: 'linear-gradient(180deg, transparent 0%, rgba(139,92,246,0.03) 50%, transparent 100%)' }} />
 
@@ -1018,7 +1018,7 @@ export default function HomePage() {
         </section>
 
         {/* ══ CTA ══ */}
-        <section className="py-24 sm:py-32 px-4 relative overflow-hidden">
+        <section className="py-24 sm:py-32 px-4 sm:px-6 relative overflow-hidden">
           <div className="absolute inset-0 pointer-events-none">
             <div className="absolute inset-0"
               style={{ background: 'radial-gradient(ellipse at center, rgba(139,92,246,0.11) 0%, rgba(37,99,235,0.05) 40%, transparent 70%)' }} />

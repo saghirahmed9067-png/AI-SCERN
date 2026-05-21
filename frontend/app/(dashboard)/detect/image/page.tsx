@@ -4,7 +4,6 @@ import { MobileResultSheet } from '@/components/MobileResultSheet'
 import { useState, useCallback } from 'react'
 import { toUserError } from '@/lib/utils/user-errors'
 import { useDropzone } from 'react-dropzone'
-import ScanningLoader, { type ScanStage } from '@/components/ScanningLoader'
 import { uploadToR2WithProgress } from '@/lib/storage/upload-with-progress'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Image as ImageIcon, Upload, X, AlertTriangle, CheckCircle, HelpCircle, Loader2, RotateCcw, Download, ZoomIn, Info, Share2, Database, Microscope } from 'lucide-react'
@@ -49,7 +48,6 @@ function ImageDetectionPage() {
   const [zoomed, setZoomed] = useState(false)
   const [imgDims, setImgDims] = useState<{w:number,h:number}|null>(null)
   const [uploadProgress, setUploadProgress] = useState(0)
-  const [scanStage, setScanStage] = useState<ScanStage>('idle')
 
   const onDrop = useCallback((accepted: File[]) => {
     const f = accepted[0]; if (!f) return
@@ -74,7 +72,7 @@ function ImageDetectionPage() {
 
   const handleDetect = async () => {
     if (!file) return
-    setLoading(true); setError(null); setResult(null); setForensicScanId(null); setScanStage('uploading')
+    setLoading(true); setError(null); setResult(null); setForensicScanId(null)
     try {
       let r2Key: string | null = null
 
@@ -92,7 +90,6 @@ function ImageDetectionPage() {
           r2Key = presignData.key
         }
       } catch { /* fallback to direct upload */ }
-      setScanStage('analyzing')
 
       let res: Response
       if (r2Key) {
@@ -105,10 +102,8 @@ function ImageDetectionPage() {
         res = await fetch('/api/detect/image', { method: 'POST', body: formData })
       }
 
-      setScanStage('processing')
       const data = await res.json()
       if (!data.success) throw new Error(toUserError(data.error?.code, data.error?.message))
-      setScanStage('complete')
       setResult(data.result); setShowMobileResult(true)
       setScanId(data.scan_id ?? null)
       setForensicScanId(data.forensic_scan_id ?? null)
@@ -117,7 +112,7 @@ function ImageDetectionPage() {
       window.dispatchEvent(new CustomEvent('aiscern:scan-saved'))
     } catch (e: unknown) {
       setError(e instanceof Error ? toUserError(undefined, e.message) : toUserError())
-    } finally { setLoading(false); setScanStage('idle') }
+    } finally { setLoading(false) }
   }
 
   const exportReport = () => {
@@ -150,12 +145,12 @@ Analyzed: ${new Date().toLocaleString()}`
     } catch { alert('Could not copy link. Try again.') }
   }
 
-  const reset = () => { setFile(null); setPreview(null); setResult(null); setGraphContext(null); setError(null); setImgDims(null); setZoomed(false); setUploadProgress(0); setScanStage('idle') }
+  const reset = () => { setFile(null); setPreview(null); setResult(null); setGraphContext(null); setError(null); setImgDims(null); setZoomed(false); setUploadProgress(0) }
   const cfg = result ? verdictConfig[result.verdict as Verdict] : null
 
   return (
     <>
-    <div className="p-2 sm:p-4 lg:p-8 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-4 lg:p-8 max-w-6xl mx-auto">
       {/* Zoom modal */}
       {zoomed && preview && (
         <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setZoomed(false)}>
@@ -229,7 +224,6 @@ Analyzed: ${new Date().toLocaleString()}`
                   className="absolute inset-0 bg-black/0 group-hover:bg-black/30 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100">
                   <ZoomIn className="w-8 h-8 text-white drop-shadow" />
                 </button>
-{/* Upload progress handled by ScanningLoader below */}
                 {uploadProgress > 0 && uploadProgress < 100 && (
                   <div className="mt-3 w-full">
                     <div className="flex justify-between text-xs text-text-muted mb-1">
@@ -238,20 +232,6 @@ Analyzed: ${new Date().toLocaleString()}`
                     <div className="h-1.5 bg-surface-active rounded-full overflow-hidden">
                       <div className="h-full bg-primary rounded-full transition-all duration-200" style={{ width: `${uploadProgress}%` }} />
                     </div>
-                  </div>
-                )}
-{false && (
-                  <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center gap-3">
-                    <div className="relative w-16 h-16">
-                      <div className="absolute inset-0 rounded-full border-2 border-primary/20" />
-                      <div className="absolute inset-0 rounded-full border-2 border-t-primary animate-spin" />
-                      <div className="absolute inset-2 rounded-full bg-primary/10 flex items-center justify-center">
-                        <ImageIcon className="w-6 h-6 text-primary" />
-                      </div>
-                    </div>
-                    <motion.div animate={{ y: ['0%', '100%'] }} transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-                      className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent opacity-80" />
-                    <p className="text-sm text-primary font-medium">Scanning image…</p>
                   </div>
                 )}
               </div>
@@ -394,11 +374,7 @@ Analyzed: ${new Date().toLocaleString()}`
               </div>
             </motion.div>
           ) : loading && !result ? (
-            <div className="py-4">
-              <ScanningLoader stage={scanStage !== 'idle' ? scanStage : 'analyzing'} uploadProgress={uploadProgress} mediaType="image" />
-            </div>
-          ) : loading && false ? (
-            <motion.div key="loading-old" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="card flex flex-col items-center justify-center py-16 gap-4">
               <div className="relative">
                 <div className="w-20 h-20 rounded-full border-2 border-primary/20 flex items-center justify-center">
@@ -408,7 +384,7 @@ Analyzed: ${new Date().toLocaleString()}`
               </div>
               <div className="text-center space-y-1">
                 <p className="font-semibold text-text-primary">Analyzing image…</p>
-                <p className="text-sm text-text-muted">Pixel forensics · GAN detection · Neural ensemble</p>
+                <p className="text-sm text-text-muted">GAN fingerprints · Pixel forensics · Neural ensemble</p>
                 <p className="text-xs text-text-disabled animate-pulse">Running 3-model ensemble + 6 pixel signals…</p>
               </div>
             </motion.div>
