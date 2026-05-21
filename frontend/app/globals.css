@@ -2,33 +2,80 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════════════
+   AISCERN GLOBALS.CSS — PERFORMANCE & COMPATIBILITY FIXED
+   Optimized for: low-spec devices, old Android, iOS Safari,
+   Clerk components, dashboard heavy layouts.
+   ═══════════════════════════════════════════════════════════════ */
+
 @layer base {
-  * {
+  /* ── Conservative reset — scoped to avoid breaking Clerk/embedded widgets ── */
+  *,
+  *::before,
+  *::after {
     box-sizing: border-box;
-    margin: 0;
-    padding: 0;
   }
 
   html {
     scroll-behavior: smooth;
-    /* Prevent iOS font scaling on rotation */
     -webkit-text-size-adjust: 100%;
-    -moz-text-size-adjust: 100%;
     text-size-adjust: 100%;
-    /* Remove 300ms tap delay globally */
     touch-action: manipulation;
+    /* Prevent horizontal scroll without breaking sticky/fixed positioning */
+    overflow-x: clip;
+    /* Fallback for old browsers without dvh support */
+    min-height: 100vh;
+    min-height: 100dvh;
   }
 
   body {
     font-family: var(--font-inter, 'Inter'), system-ui, -apple-system, sans-serif;
-    /* Use dynamic viewport height — avoids iOS Safari address-bar jump */
+    min-height: 100vh;
     min-height: 100dvh;
-    -webkit-font-smoothing: subpixel-antialiased;
-    -moz-osx-font-smoothing: auto;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     color-scheme: dark;
+    /* Scoped margin/padding reset — avoid * selector specificity wars */
+    margin: 0;
+    padding: 0;
+    /* Prevent layout shift from scrollbar appearance */
+    overflow-y: auto;
+    overflow-x: clip;
+    /* Ensure text wraps beautifully on all screens */
+    text-wrap: pretty;
   }
 
-  /* Scrollbar styling for webkit browsers */
+  /* Typography defaults */
+  h1, h2, h3, h4 {
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  p, ul, ol {
+    margin: 0;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button {
+    font-family: inherit;
+  }
+
+  img, video, svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* ── Scrollbar styling — scoped to html only to reduce style recalc ── */
+  html {
+    scrollbar-color: #1e1e2e transparent;
+    scrollbar-width: thin;
+  }
+
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -46,12 +93,6 @@
   ::-webkit-scrollbar-thumb:hover {
     background: #2a2a3e;
   }
-
-  /* Firefox scrollbar (limited support) */
-  * {
-    scrollbar-color: #1e1e2e transparent;
-    scrollbar-width: thin;
-  }
 }
 
 @layer components {
@@ -67,17 +108,17 @@
            text-white font-semibold rounded-xl px-6 py-3 transition-all duration-150 
            active:scale-95 inline-flex items-center justify-center gap-2 cursor-pointer;
     box-shadow: 0 4px 14px rgba(124, 58, 237, 0.25);
-    transform: translateZ(0);
-    backface-visibility: hidden;
+    /* GPU promote only on interaction, not by default */
+    will-change: transform;
   }
 
   .btn-primary:hover {
     box-shadow: 0 4px 20px rgba(124, 58, 237, 0.4);
-    transform: translateY(-1px) translateZ(0);
+    transform: translateY(-1px);
   }
 
   .btn-primary:active {
-    transform: translateY(0) translateZ(0);
+    transform: translateY(0);
   }
 
   .btn-ghost {
@@ -92,6 +133,12 @@
 
   .card {
     @apply bg-surface border border-border rounded-2xl p-4 sm:p-6;
+    /* Critical: contain paint/layout to prevent full-page repaints on dashboard */
+    contain: layout style paint;
+    /* Ensure cards shrink properly in flex/grid */
+    min-width: 0;
+    /* Create stacking context without forcing GPU layer */
+    isolation: isolate;
   }
 
   .card-hover {
@@ -101,6 +148,9 @@
 
   .glass {
     @apply bg-white/[0.03] border border-white/10;
+    /* Backdrop blur disabled by default on low-power; see media queries below */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
 
   .input-field {
@@ -148,12 +198,10 @@
 
   .animate-float {
     animation: float 3s ease-in-out infinite;
-    transform: translateZ(0);
   }
 
   .animate-glow-pulse {
     animation: glow-pulse 2s ease-in-out infinite;
-    transform: translateZ(0);
   }
 
   .skeleton {
@@ -184,15 +232,15 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   KEYFRAME ANIMATIONS — GPU-optimized with transform + opacity only
+   KEYFRAME ANIMATIONS — GPU-optimized, minimal properties
    ═══════════════════════════════════════════════════════════════ */
 
 @keyframes float {
   0%, 100% {
-    transform: translateY(0px) translateZ(0);
+    transform: translateY(0px);
   }
   50% {
-    transform: translateY(-8px) translateZ(0);
+    transform: translateY(-8px);
   }
 }
 
@@ -226,7 +274,6 @@
 
 /* ── Mobile responsiveness ─────────────────────────────────────────────── */
 @layer utilities {
-  /* Prose styles for legal pages */
   .prose-detectai ul {
     list-style: disc;
     padding-left: 1.5rem;
@@ -248,13 +295,11 @@
     text-decoration: underline;
   }
 
-  /* Mobile safe paddings */
   .mobile-safe {
     padding-left: max(1rem, env(safe-area-inset-left));
     padding-right: max(1rem, env(safe-area-inset-right));
   }
 
-  /* Overflow-wrap utility — prevents long URLs/hashes breaking layout on mobile */
   .prevent-overflow {
     overflow-wrap: break-word;
     word-wrap: break-word;
@@ -262,23 +307,20 @@
     hyphens: auto;
   }
 
-  /* Tap highlight suppression for custom interactive elements */
   .no-tap-highlight {
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* Contain overscroll inside modal/sheet panels */
   .overscroll-contain {
     overscroll-behavior: contain;
   }
 
-  /* Touch manipulation (remove 300ms delay on specific elements) */
   .touch-manipulation {
     touch-action: manipulation;
   }
 }
 
-/* Mobile responsive table wrapper */
+/* ── Table wrapper — NEVER change table display property ── */
 .table-responsive {
   display: block;
   width: 100%;
@@ -286,11 +328,9 @@
   -webkit-overflow-scrolling: touch;
 }
 
-/* Prevent horizontal scroll on mobile */
-html,
+/* Prevent horizontal scroll without breaking sticky positioning */
 body {
-  overflow-x: hidden;
-  max-width: 100vw;
+  overflow-x: clip;
 }
 
 /* Better touch targets on mobile */
@@ -301,18 +341,11 @@ body {
     min-height: 44px;
   }
 
-  /* Input fields — prevent iOS zoom on focus (important!) */
+  /* Input fields — prevent iOS zoom on focus */
   input,
   textarea,
   select {
-    font-size: 16px !important;
-  }
-
-  /* Make tables scroll horizontally on mobile */
-  table {
-    display: block;
-    overflow-x: auto;
-    white-space: nowrap;
+    font-size: 16px;
   }
 
   /* Ensure code blocks don't overflow */
@@ -322,14 +355,8 @@ body {
     overflow-x: auto;
   }
 
-  /* Fix hero text on mobile */
   .hero-title {
     font-size: clamp(1.75rem, 7vw, 3.5rem);
-  }
-
-  /* Hero section — ensure text never overflows */
-  section {
-    overflow-x: hidden;
   }
 
   /* Cards — ensure they don't break layout */
@@ -345,7 +372,6 @@ body {
     }
   }
 
-  /* Dashboard sidebar - always collapse on mobile */
   .sidebar-mobile-hidden {
     display: none;
   }
@@ -366,11 +392,11 @@ body {
 @keyframes fadeInUp {
   from {
     opacity: 0;
-    transform: translateY(20px) translateZ(0);
+    transform: translateY(20px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) translateZ(0);
+    transform: translateY(0);
   }
 }
 
@@ -391,46 +417,31 @@ body {
   animation: fadeIn 0.4s ease forwards;
 }
 
-/* Reduce animation on slow connections / reduced motion preference */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
 /* ── Infinite scroll animations for AI vs Real cards ──────────────────── */
 @keyframes scroll-left {
   0% {
-    transform: translateX(0) translateZ(0);
+    transform: translateX(0);
   }
   100% {
-    transform: translateX(-50%) translateZ(0);
+    transform: translateX(-50%);
   }
 }
 
 @keyframes scroll-right {
   0% {
-    transform: translateX(-50%) translateZ(0);
+    transform: translateX(-50%);
   }
   100% {
-    transform: translateX(0) translateZ(0);
+    transform: translateX(0);
   }
 }
 
 .animate-scroll-left {
   animation: scroll-left 40s linear infinite;
-  transform: translateZ(0);
-  backface-visibility: hidden;
 }
 
 .animate-scroll-right {
   animation: scroll-right 40s linear infinite;
-  transform: translateZ(0);
-  backface-visibility: hidden;
 }
 
 .animate-scroll-left:hover,
@@ -453,95 +464,87 @@ body {
 @keyframes node-in-bob-a {
   0% {
     opacity: 0;
-    transform: translateY(0px) scale(0.85) translateZ(0);
+    transform: translateY(0px) scale(0.85);
   }
   16% {
     opacity: 1;
-    transform: translateY(0px) scale(1) translateZ(0);
+    transform: translateY(0px) scale(1);
   }
   37% {
     opacity: 1;
-    transform: translateY(-6px) scale(1) translateZ(0);
+    transform: translateY(-6px) scale(1);
   }
   58% {
     opacity: 1;
-    transform: translateY(0px) scale(1) translateZ(0);
+    transform: translateY(0px) scale(1);
   }
   79% {
     opacity: 1;
-    transform: translateY(-6px) scale(1) translateZ(0);
+    transform: translateY(-6px) scale(1);
   }
   100% {
     opacity: 1;
-    transform: translateY(0px) scale(1) translateZ(0);
+    transform: translateY(0px) scale(1);
   }
 }
 
 @keyframes node-in-bob-b {
   0% {
     opacity: 0;
-    transform: translateY(0px) scale(0.85) translateZ(0);
+    transform: translateY(0px) scale(0.85);
   }
   14% {
     opacity: 1;
-    transform: translateY(0px) scale(1) translateZ(0);
+    transform: translateY(0px) scale(1);
   }
   35% {
     opacity: 1;
-    transform: translateY(-9px) scale(1) translateZ(0);
+    transform: translateY(-9px) scale(1);
   }
   56% {
     opacity: 1;
-    transform: translateY(0px) scale(1) translateZ(0);
+    transform: translateY(0px) scale(1);
   }
   77% {
     opacity: 1;
-    transform: translateY(-9px) scale(1) translateZ(0);
+    transform: translateY(-9px) scale(1);
   }
   100% {
     opacity: 1;
-    transform: translateY(0px) scale(1) translateZ(0);
+    transform: translateY(0px) scale(1);
   }
 }
 
+/* 
+   CRITICAL FIX: Removed animation-fill-mode: forwards from infinite animations.
+   "forwards" + "infinite" causes compositor thrashing and glitches on low-spec GPUs.
+   Also removed translateZ(0) and backface-visibility defaults — only promote GPU 
+   layers when absolutely necessary.
+*/
 .node-card {
   opacity: 0;
-  will-change: transform, opacity;
   animation: node-in-bob-a 5s ease-in-out infinite;
-  animation-fill-mode: forwards;
-  backface-visibility: hidden;
-  contain: layout style;
 }
 
 .node-card-bob-a {
   opacity: 0;
-  will-change: transform, opacity;
   animation: node-in-bob-a 5s ease-in-out infinite;
-  animation-fill-mode: forwards;
-  backface-visibility: hidden;
-  contain: layout style;
-  transform: translateZ(0);
 }
 
 .node-card-bob-b {
   opacity: 0;
-  will-change: transform, opacity;
   animation: node-in-bob-b 6s ease-in-out infinite;
-  animation-fill-mode: forwards;
-  backface-visibility: hidden;
-  contain: layout style;
-  transform: translateZ(0);
 }
 
 /* ── Hero text fade-up ───────────────────────────────────────────────── */
 @keyframes hero-fade-up {
   from {
     opacity: 0;
-    transform: translateY(14px) translateZ(0);
+    transform: translateY(14px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) translateZ(0);
+    transform: translateY(0);
   }
 }
 
@@ -551,25 +554,7 @@ body {
 }
 
 /* ── Scrollbar styling refinement ──────────────────────────────────────── */
-::-webkit-scrollbar {
-  width: 3px;
-  height: 3px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 2px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(124, 58, 237, 0.3);
-}
-
-/* ── Clerk auth form overrides ───────────────────────────────────────── */
+/* Consolidated in @layer base above */
 
 /* Remove white background flash on Clerk card mount */
 .cl-rootBox,
@@ -637,7 +622,7 @@ body {
   display: none !important;
 }
 
-/* ── content-visibility: auto optimization ────────────────────────────── */
+/* ── content-visibility optimization ────────────────────────────── */
 .cv-auto {
   content-visibility: auto;
   contain-intrinsic-size: 0 600px;
@@ -648,12 +633,18 @@ body {
   contain-intrinsic-size: 0 300px;
 }
 
+/* ── Dashboard GPU performance optimization ──────────────────────────────── */
+/* CRITICAL: Add containment to dashboard containers to prevent full-page repaints */
+.dashboard-grid,
+[class*="dashboard"] {
+  contain: layout style;
+}
+
 /* ── Mobile GPU performance optimization ──────────────────────────────── */
 @media (max-width: 640px) {
   /* Disable expensive backdrop effects on mobile */
-  [class*="backdrop-blur"],
-  .testimonial-card,
-  .glass {
+  .glass,
+  [class*="backdrop-blur"] {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
@@ -664,30 +655,52 @@ body {
     background-color: #0f0f17 !important;
   }
 
-  /* Reduce scrollbar size on mobile */
-  ::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
-  }
-
   ::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.06);
   }
 }
 
-/* ── Motion preferences ──────────────────────────────────────────────── */
+/* ── Motion preferences — COMPREHENSIVE FIX ──────────────────────────────── */
+/* 
+   CRITICAL: This section now disables ALL animations for users/devices that
+   request reduced motion, including infinite scrolls and node bobs.
+   This fixes glitches on low-spec devices and respects accessibility.
+*/
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
   .animate-scroll-left,
-  .animate-scroll-right {
+  .animate-scroll-right,
+  .marquee-left,
+  .marquee-right {
     animation: none !important;
     transform: none !important;
   }
 
   .hero-fade-up,
+  .node-card,
   .node-card-bob-a,
   .node-card-bob-b {
     animation: none !important;
     opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .animate-float,
+  .animate-glow-pulse,
+  .scan-line,
+  .hero-mesh-1,
+  .hero-mesh-2,
+  .hero-mesh-3,
+  .trust-pulse {
+    animation: none !important;
   }
 
   html {
@@ -695,14 +708,42 @@ body {
   }
 }
 
+/* ── Low-refresh-rate / low-spec device detection ──────────────────────── */
+/* 
+   Fixes glitches on old devices with slow screens (e-ink, budget Android).
+   Also catches devices where the OS reports update: slow.
+*/
+@media (update: slow) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .animate-scroll-left,
+  .animate-scroll-right,
+  .node-card,
+  .node-card-bob-a,
+  .node-card-bob-b,
+  .hero-fade-up,
+  .animate-float,
+  .animate-glow-pulse {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
 /* ── ARIA chat animations ────────────────────────────────────────────── */
 @keyframes aria-dot-bounce {
   0%, 60%, 100% {
-    transform: translateY(0) translateZ(0);
+    transform: translateY(0);
     opacity: 0.5;
   }
   30% {
-    transform: translateY(-5px) translateZ(0);
+    transform: translateY(-5px);
     opacity: 1;
   }
 }
@@ -710,11 +751,11 @@ body {
 @keyframes aria-msg-in {
   from {
     opacity: 0;
-    transform: translateY(8px) translateZ(0);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) translateZ(0);
+    transform: translateY(0);
   }
 }
 
@@ -726,11 +767,11 @@ body {
 @keyframes verdict-in {
   from {
     opacity: 0;
-    transform: translateY(12px) scale(0.97) translateZ(0);
+    transform: translateY(12px) scale(0.97);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1) translateZ(0);
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -773,7 +814,7 @@ body {
   }
 }
 
-/* iOS bottom safe area */
+/* iOS bottom safe area — with fallback for old browsers */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .detect-page-safe {
     padding-bottom: calc(1rem + env(safe-area-inset-bottom));
@@ -786,6 +827,19 @@ body {
   .review-modal-content {
     padding-bottom: calc(env(safe-area-inset-bottom) + 1.5rem);
   }
+}
+
+/* Fallback for browsers without env() support */
+.detect-page-safe {
+  padding-bottom: 1.5rem;
+}
+
+footer {
+  padding-bottom: 1.5rem;
+}
+
+.review-modal-content {
+  padding-bottom: 1.5rem;
 }
 
 /* ── Accessibility improvements ──────────────────────────────────────── */
@@ -861,7 +915,7 @@ body {
 }
 
 /* ── Typography on mobile ────────────────────────────────────────────── */
-@media (max-width: 639px) {
+@media (max-width: 640px) {
   h1,
   h2,
   h3 {
@@ -870,10 +924,6 @@ body {
 
   p {
     text-wrap: pretty;
-  }
-
-  * {
-    max-width: 100%;
   }
 
   a,
@@ -935,17 +985,14 @@ section > .max-w-7xl > .border-t {
 
 .hero-mesh-1 {
   animation: mesh-drift 18s ease-in-out infinite;
-  will-change: transform;
 }
 
 .hero-mesh-2 {
   animation: mesh-drift 22s ease-in-out infinite reverse;
-  will-change: transform;
 }
 
 .hero-mesh-3 {
   animation: mesh-drift 15s ease-in-out infinite 5s;
-  will-change: transform;
 }
 
 /* ── Spotlight card effect ───────────────────────────────────────────── */
@@ -1044,19 +1091,19 @@ section > .max-w-7xl > .border-t {
 /* ── Marquee animations ──────────────────────────────────────────────── */
 @keyframes marquee-left {
   from {
-    transform: translateX(0) translateZ(0);
+    transform: translateX(0);
   }
   to {
-    transform: translateX(-50%) translateZ(0);
+    transform: translateX(-50%);
   }
 }
 
 @keyframes marquee-right {
   from {
-    transform: translateX(-50%) translateZ(0);
+    transform: translateX(-50%);
   }
   to {
-    transform: translateX(0) translateZ(0);
+    transform: translateX(0);
   }
 }
 
@@ -1067,12 +1114,10 @@ section > .max-w-7xl > .border-t {
 
 .marquee-left {
   animation: marquee-left 30s linear infinite;
-  transform: translateZ(0);
 }
 
 .marquee-right {
   animation: marquee-right 35s linear infinite;
-  transform: translateZ(0);
 }
 
 .marquee-left:hover,
